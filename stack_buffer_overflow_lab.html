@@ -1,0 +1,1228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stack Buffer Overflow Interactive Visualizer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    },
+                    colors: {
+                        slate: {
+                            850: '#151e2e',
+                            950: '#0a0f1d',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0a0f1d;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .code-font {
+            font-family: 'Fira Code', monospace;
+        }
+
+        /* Pulsing corrupted memory effect */
+        @keyframes memoryGlow {
+            0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.6); border-color: #f87171; }
+            50% { box-shadow: 0 0 18px rgba(239, 68, 68, 0.95); border-color: #ef4444; }
+        }
+
+        .corrupted-glow {
+            animation: memoryGlow 1.5s infinite;
+            background-color: rgba(239, 68, 68, 0.25) !important;
+        }
+
+        /* Active writing pulse */
+        @keyframes activeWrite {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .active-write-row {
+            animation: activeWrite 0.3s ease-in-out;
+            border-left-width: 4px !important;
+            border-left-color: #38bdf8 !important;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-cyan-500 selection:text-slate-900">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-40 px-4 py-3">
+        <div class="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div class="flex items-center gap-3">
+                <div class="p-2 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-xl shadow-lg shadow-cyan-500/20 text-slate-950 font-bold">
+                    <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-white flex items-center gap-2">
+                        Stack Buffer Overflow Lab
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800/50 font-mono">CS Security Module</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Interactive Visualization of Stack Frame Memory, Variables & Control Flow Hijacking</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2">
+                <button id="btn-guide-modal" class="px-3 py-1.5 text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg flex items-center gap-1.5 transition">
+                    <i data-lucide="book-open" class="w-4 h-4 text-cyan-400"></i>
+                    <span>Lab Guide</span>
+                </button>
+                <button id="btn-reset-all" class="px-3 py-1.5 text-xs font-medium bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/60 rounded-lg flex items-center gap-1.5 transition">
+                    <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                    <span>Reset Lab</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="max-w-7xl mx-auto w-full p-4 md:p-6 flex-grow space-y-6">
+
+        <!-- Preset Scenarios Toolbar -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl">
+            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                    <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i>
+                    <span>Preset Scenarios:</span>
+                </div>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2 w-full lg:w-auto">
+                    <button class="preset-btn text-left px-3 py-2 rounded-xl border border-slate-700/80 bg-slate-800/60 hover:bg-slate-700/80 transition group" data-preset="1">
+                        <div class="text-xs font-bold text-emerald-400 flex items-center gap-1">
+                            <i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i>
+                            1. Normal Input
+                        </div>
+                        <div class="text-[11px] text-slate-400 group-hover:text-slate-300 truncate">Safe execution ('Alice')</div>
+                    </button>
+
+                    <button class="preset-btn text-left px-3 py-2 rounded-xl border border-slate-700/80 bg-slate-800/60 hover:bg-slate-700/80 transition group" data-preset="2">
+                        <div class="text-xs font-bold text-amber-400 flex items-center gap-1">
+                            <i data-lucide="user-check" class="w-3.5 h-3.5"></i>
+                            2. Overwrite Variable
+                        </div>
+                        <div class="text-[11px] text-slate-400 group-hover:text-slate-300 truncate">Privilege Escalation (`isAdmin`)</div>
+                    </button>
+
+                    <button class="preset-btn text-left px-3 py-2 rounded-xl border border-slate-700/80 bg-slate-800/60 hover:bg-slate-700/80 transition group" data-preset="3">
+                        <div class="text-xs font-bold text-rose-400 flex items-center gap-1">
+                            <i data-lucide="skull" class="w-3.5 h-3.5"></i>
+                            3. Control Flow Hijack
+                        </div>
+                        <div class="text-[11px] text-slate-400 group-hover:text-slate-300 truncate">Overwrite RET -> secret_func()</div>
+                    </button>
+
+                    <button class="preset-btn text-left px-3 py-2 rounded-xl border border-slate-700/80 bg-slate-800/60 hover:bg-slate-700/80 transition group" data-preset="4">
+                        <div class="text-xs font-bold text-purple-400 flex items-center gap-1">
+                            <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                            4. Stack Canary Protection
+                        </div>
+                        <div class="text-[11px] text-slate-400 group-hover:text-slate-300 truncate">Detect Smash (`__stack_chk_fail`)</div>
+                    </button>
+
+                    <button class="preset-btn text-left px-3 py-2 rounded-xl border border-slate-700/80 bg-slate-800/60 hover:bg-slate-700/80 transition group" data-preset="5">
+                        <div class="text-xs font-bold text-cyan-400 flex items-center gap-1">
+                            <i data-lucide="lock" class="w-3.5 h-3.5"></i>
+                            5. Safe C Functions
+                        </div>
+                        <div class="text-[11px] text-slate-400 group-hover:text-slate-300 truncate">Truncate input (`strncpy`)</div>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Interactive Control Bar -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-end">
+                
+                <!-- Input Box with Hex Helper -->
+                <div class="lg:col-span-5 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label for="input-string" class="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                            <i data-lucide="terminal" class="w-4 h-4 text-cyan-400"></i>
+                            Input String Payload:
+                        </label>
+                        <span class="text-[11px] text-slate-400 font-mono">Length: <span id="input-len-display" class="text-cyan-400 font-bold">0</span> bytes</span>
+                    </div>
+                    <div class="relative">
+                        <input type="text" id="input-string" value="Alice" placeholder="Type text or hex escape e.g. AAAAAAAA\x01..." 
+                               class="w-full bg-slate-950 border border-slate-700 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 rounded-xl px-3.5 py-2.5 text-sm font-mono text-cyan-300 placeholder-slate-600 outline-none transition">
+                    </div>
+                    <!-- Hex Snippet Helpers -->
+                    <div class="flex flex-wrap gap-1.5 text-[11px]">
+                        <span class="text-slate-500 font-medium py-0.5">Quick Inject:</span>
+                        <button class="btn-quick-inject bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 rounded px-1.5 py-0.5 font-mono" data-val="AAAAAAAA">8x'A'</button>
+                        <button class="btn-quick-inject bg-slate-800 hover:bg-slate-700 border border-slate-700 text-amber-300 rounded px-1.5 py-0.5 font-mono" data-val="\x01">\x01 (Admin Flag)</button>
+                        <button class="btn-quick-inject bg-slate-800 hover:bg-slate-700 border border-slate-700 text-rose-300 rounded px-1.5 py-0.5 font-mono" data-val="\xb6\x11\x40\x00">RET Target (\xb6\x11\x40\x00)</button>
+                        <button id="btn-clear-input" class="bg-slate-800/80 hover:bg-slate-700 text-slate-400 rounded px-1.5 py-0.5">Clear</button>
+                    </div>
+                </div>
+
+                <!-- Buffer Size Slider & Protections -->
+                <div class="lg:col-span-4 space-y-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                    <div>
+                        <div class="flex justify-between items-center text-xs mb-1">
+                            <span class="font-semibold text-slate-300 flex items-center gap-1">
+                                <i data-lucide="sliders" class="w-3.5 h-3.5 text-cyan-400"></i>
+                                Buffer Size (`char buffer[N]`):
+                            </span>
+                            <span id="buffer-size-val" class="font-mono text-cyan-400 font-bold">8 Bytes</span>
+                        </div>
+                        <input type="range" id="buffer-size-slider" min="4" max="16" step="4" value="8" 
+                               class="w-full accent-cyan-500 bg-slate-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-800">
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="toggle-canary" class="rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 w-4 h-4">
+                            <span class="text-slate-300 font-medium">Stack Canary</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="toggle-safe-fn" class="rounded bg-slate-900 border-slate-700 text-cyan-600 focus:ring-cyan-500 w-4 h-4">
+                            <span class="text-slate-300 font-medium">Safe `strncpy()`</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Execution Step Controls -->
+                <div class="lg:col-span-3 flex flex-col gap-2">
+                    <span class="text-xs font-semibold text-slate-300 flex items-center gap-1">
+                        <i data-lucide="play-circle" class="w-4 h-4 text-cyan-400"></i>
+                        Simulation Controls:
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <button id="btn-run" class="flex-1 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition shadow-lg shadow-cyan-500/10">
+                            <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+                            <span id="btn-run-text">Run Payload</span>
+                        </button>
+                        <button id="btn-step" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs py-2.5 px-3 rounded-xl flex items-center gap-1 transition">
+                            <i data-lucide="step-forward" class="w-4 h-4"></i>
+                            <span>Step</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between text-[11px] text-slate-400 pt-0.5">
+                        <span>Speed:</span>
+                        <input type="range" id="speed-slider" min="100" max="1000" step="100" value="400" class="w-24 accent-slate-400 bg-slate-800 h-1 rounded">
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- Dual Panel View: Code & Execution vs Memory Stack -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+            <!-- LEFT PANEL: Source Code & System State (5 Cols) -->
+            <div class="lg:col-span-5 space-y-5">
+                
+                <!-- C Source Code View -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+                    <div class="bg-slate-850 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-rose-500 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-amber-500 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-emerald-500 inline-block"></span>
+                            <span class="text-xs font-mono text-slate-400 ml-2 font-semibold">vulnerable_program.c</span>
+                        </div>
+                        <span id="compiler-badge" class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">gcc -fno-stack-protector</span>
+                    </div>
+                    <div class="p-3 bg-slate-950 font-mono text-xs overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <tbody id="code-lines-body">
+                                <!-- Dynamic C code generated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- CPU Registers & System Status Banner -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-3">
+                    <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <i data-lucide="cpu" class="w-4 h-4 text-cyan-400"></i>
+                        CPU Register State
+                    </h3>
+                    <div class="grid grid-cols-3 gap-2 text-center font-mono text-xs">
+                        <div class="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                            <div class="text-[10px] text-slate-500">RSP (Stack Ptr)</div>
+                            <div id="reg-rsp" class="text-cyan-400 font-bold truncate">0x7ffff4000</div>
+                        </div>
+                        <div class="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                            <div class="text-[10px] text-slate-500">RBP (Base Ptr)</div>
+                            <div id="reg-rbp" class="text-purple-400 font-bold truncate">0x7ffff4010</div>
+                        </div>
+                        <div class="p-2 bg-slate-950 rounded-xl border border-slate-800">
+                            <div class="text-[10px] text-slate-500">RIP (Instruction)</div>
+                            <div id="reg-rip" class="text-amber-400 font-bold truncate">0x00401100</div>
+                        </div>
+                    </div>
+
+                    <!-- Security Alert Banner -->
+                    <div id="status-alert" class="p-3 rounded-xl border border-slate-700 bg-slate-800 text-slate-200 text-xs flex items-start gap-2 transition">
+                        <i id="status-alert-icon" data-lucide="info" class="w-4 h-4 text-cyan-400 mt-0.5 shrink-0"></i>
+                        <div>
+                            <div id="status-alert-title" class="font-bold text-slate-100">System Ready</div>
+                            <div id="status-alert-desc" class="text-slate-400 text-[11px]">Type payload input or choose a preset scenario to start simulation.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Terminal / Program Output -->
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2">
+                    <div class="flex items-center justify-between text-xs font-semibold text-slate-400">
+                        <span class="flex items-center gap-1.5">
+                            <i data-lucide="terminal" class="w-4 h-4 text-emerald-400"></i>
+                            Program Console Output
+                        </span>
+                        <button id="btn-clear-console" class="text-[10px] text-slate-500 hover:text-slate-300">Clear</button>
+                    </div>
+                    <div id="console-output" class="h-28 bg-slate-950 rounded-xl p-3 font-mono text-[11px] text-emerald-400 overflow-y-auto space-y-1 border border-slate-850">
+                        <div>$ ./vulnerable_program</div>
+                        <div class="text-slate-500">[System] Memory frame initialized. Waiting for input...</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT PANEL: Memory Stack Visualizer (7 Cols) -->
+            <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+                
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                    <div>
+                        <h2 class="text-base font-bold text-white flex items-center gap-2">
+                            <i data-lucide="layers" class="w-5 h-5 text-cyan-400"></i>
+                            Stack Frame Layout
+                        </h2>
+                        <p class="text-xs text-slate-400">Contiguous Memory Mapping (High Address Top &rarr; Low Address Bottom)</p>
+                    </div>
+
+                    <!-- Legend -->
+                    <div class="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
+                        <span class="px-2 py-0.5 rounded bg-blue-950 text-blue-300 border border-blue-800">Buffer</span>
+                        <span class="px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">isAdmin</span>
+                        <span id="legend-canary" class="px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 hidden">Canary</span>
+                        <span class="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800">SFP</span>
+                        <span class="px-2 py-0.5 rounded bg-rose-950 text-rose-300 border border-rose-800">RET</span>
+                    </div>
+                </div>
+
+                <!-- Memory Direction Markers -->
+                <div class="grid grid-cols-2 gap-2 text-[11px] font-mono bg-slate-950/70 p-2.5 rounded-xl border border-slate-800 text-slate-400">
+                    <div class="flex items-center gap-1.5 text-rose-400 font-semibold">
+                        <i data-lucide="arrow-down-narrow-wide" class="w-4 h-4"></i>
+                        <span>Stack Grows DOWN (&darr;)</span>
+                    </div>
+                    <div class="flex items-center gap-1.5 text-cyan-400 font-semibold justify-end">
+                        <span>Buffer Writes UP (&uarr;)</span>
+                        <i data-lucide="arrow-up-narrow-wide" class="w-4 h-4"></i>
+                    </div>
+                </div>
+
+                <!-- Memory Table -->
+                <div class="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
+                    <table class="w-full text-left font-mono text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-850 text-slate-400 text-[11px] uppercase tracking-wider border-b border-slate-800">
+                                <th class="p-2.5">Memory Address</th>
+                                <th class="p-2.5">Offset</th>
+                                <th class="p-2.5">Variable / Field</th>
+                                <th class="p-2.5 text-center">Hex</th>
+                                <th class="p-2.5 text-center">ASCII</th>
+                                <th class="p-2.5 text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="memory-table-body" class="divide-y divide-slate-800/60">
+                            <!-- Memory slots injected dynamically via JS -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="text-[11px] text-slate-400 flex items-center justify-between px-1">
+                    <span class="flex items-center gap-1">
+                        <i data-lucide="mouse-pointer-click" class="w-3.5 h-3.5 text-cyan-400"></i>
+                        Click any memory row to open detailed inspector tooltip.
+                    </span>
+                    <span class="text-slate-500">x86_64 Calling Convention</span>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Educational Explanation & Defensive Matrix Section -->
+        <section class="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h2 class="text-base font-bold text-white flex items-center gap-2">
+                    <i data-lucide="graduation-cap" class="w-5 h-5 text-cyan-400"></i>
+                    Educational Core Concepts & Defensive Countermeasures
+                </h2>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                
+                <!-- Concept 1 -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-cyan-400 font-bold text-sm">
+                        <i data-lucide="git-commit" class="w-4 h-4"></i>
+                        1. Growth vs Write Direction
+                    </div>
+                    <p class="text-slate-300 leading-relaxed">
+                        In x86 architectures, stack frames are allocated <strong>downwards</strong> towards lower addresses when functions are called. However, array operations like <code class="text-cyan-300 font-mono">strcpy()</code> write <strong>upwards</strong> towards higher addresses.
+                    </p>
+                    <p class="text-slate-400 text-[11px] leading-relaxed">
+                        Because local buffers are allocated at lower addresses than saved control pointers, un-bounded string writes overflow into adjacent variables, Saved Frame Pointers (SFP), and Return Addresses (RET).
+                    </p>
+                </div>
+
+                <!-- Concept 2 -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                        <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                        2. Impact of Corruption
+                    </div>
+                    <ul class="text-slate-300 space-y-1.5 list-disc pl-4">
+                        <li><strong>Variable Overwrite:</strong> Modifies program logic flags (e.g., changing <code class="text-amber-300 font-mono">isAdmin = 0</code> to <code class="text-amber-300 font-mono">1</code>).</li>
+                        <li><strong>Control Flow Hijack:</strong> Overwriting RET redirects instruction pointer <code class="text-rose-300 font-mono">RIP</code> to arbitrary code or hidden functions.</li>
+                        <li><strong>Crash / Denial of Service:</strong> Overwriting RET with invalid addresses triggers Segmentation Fault (<code class="text-rose-400 font-mono">SIGSEGV</code>).</li>
+                    </ul>
+                </div>
+
+                <!-- Concept 3 -->
+                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                    <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                        3. Defensive Countermeasures
+                    </div>
+                    <ul class="text-slate-300 space-y-1.5">
+                        <li class="flex items-start gap-1.5">
+                            <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+                            <span><strong>Safe APIs:</strong> Replace <code class="font-mono text-cyan-300">strcpy</code> with bound-checked <code class="font-mono text-cyan-300">strncpy</code>, <code class="font-mono text-cyan-300">snprintf</code>, or <code class="font-mono text-cyan-300">fgets</code>.</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+                            <span><strong>Stack Canaries:</strong> Compiler places secret guard values before RET. Modified canary aborts execution (<code class="font-mono text-purple-300">-fstack-protector</code>).</span>
+                        </li>
+                        <li class="flex items-start gap-1.5">
+                            <i data-lucide="check" class="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5"></i>
+                            <span><strong>ASLR & DEP/NX:</strong> Randomize memory addresses and mark stack non-executable to prevent shellcode execution.</span>
+                        </li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal: Memory Byte Details Inspector -->
+    <div id="inspector-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="search" class="w-5 h-5 text-cyan-400"></i>
+                    <h3 class="text-base font-bold text-white">Memory Address Inspector</h3>
+                </div>
+                <button id="btn-close-modal" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 font-mono text-xs">
+                <div class="grid grid-cols-2 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                    <div>
+                        <span class="text-slate-500 text-[10px] block">Address:</span>
+                        <span id="modal-address" class="text-cyan-400 font-bold">0x7fffffffe420</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 text-[10px] block">Offset:</span>
+                        <span id="modal-offset" class="text-slate-200">RBP - 16</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 text-[10px] block">Variable / Region:</span>
+                        <span id="modal-region" class="text-amber-400 font-bold">buffer[0]</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 text-[10px] block">Current Value:</span>
+                        <span id="modal-value" class="text-emerald-400 font-bold">0x41 ('A')</span>
+                    </div>
+                </div>
+
+                <div class="p-3 bg-slate-950 rounded-xl border border-slate-800 text-slate-300 space-y-1">
+                    <span class="text-slate-400 font-bold text-[11px] block flex items-center gap-1">
+                        <i data-lucide="info" class="w-3.5 h-3.5 text-cyan-400"></i>
+                        Security Role & Purpose:
+                    </span>
+                    <p id="modal-description" class="text-[11px] leading-relaxed text-slate-300">
+                        This memory location stores user input data inside the buffer array.
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="btn-modal-ok" class="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs">Close Inspector</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Lab Guide -->
+    <div id="guide-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="book-open" class="w-5 h-5 text-cyan-400"></i>
+                    <h3 class="text-base font-bold text-white">Stack Buffer Overflow Lab Guide</h3>
+                </div>
+                <button id="btn-close-guide" class="text-slate-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+                <div>
+                    <h4 class="font-bold text-cyan-400 text-sm mb-1">Welcome to the Interactive Memory Lab!</h4>
+                    <p>This application is designed for computer science learners to safely explore how memory is arranged on the execution stack and how unchecked buffer inputs alter application control flow.</p>
+                </div>
+
+                <div class="space-y-2">
+                    <h4 class="font-bold text-white text-xs uppercase tracking-wider">How to Use This Lab:</h4>
+                    <ol class="list-decimal pl-5 space-y-1 text-slate-300">
+                        <li><strong>Select a Preset Scenario:</strong> Choose from presets at the top to auto-fill payloads representing safe inputs, variable overrides, return address hijacks, and stack canary defenses.</li>
+                        <li><strong>Manual Payload Typing:</strong> Type ASCII characters or hex bytes using standard notation (e.g., <code class="text-cyan-300 font-mono">AAAA\x01</code> or <code class="text-cyan-300 font-mono">\xb6\x11\x40\x00</code>).</li>
+                        <li><strong>Run or Step Simulation:</strong> Click <strong>Run Payload</strong> to execute automatically or <strong>Step</strong> to view character-by-character string copying into stack memory.</li>
+                        <li><strong>Observe Dual Panels:</strong> Watch line execution highlights in the C code side-by-side with memory row overwrites in the stack frame.</li>
+                        <li><strong>Toggle Security Protections:</strong> Enable Stack Canaries or Safe C functions (<code class="text-cyan-300 font-mono">strncpy</code>) to observe mitigation mechanics in real time.</li>
+                    </ol>
+                </div>
+
+                <div class="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-amber-200 text-[11px]">
+                    <strong>Educational Safety Note:</strong> This interactive model is a simplified conceptual simulator designed strictly for academic coursework and visualization. No actual binary exploitation, shellcode, or malicious payload execution takes place.
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="btn-guide-ok" class="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs">Got It!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-900 px-4 py-3 text-center text-xs text-slate-500">
+        Stack Buffer Overflow Educational Visualizer &bull; Built for CS Computer Security & Architecture Students
+    </footer>
+
+    <!-- JavaScript Application Engine -->
+    <script>
+        // Global Application State
+        const state = {
+            bufferSize: 8,
+            canaryEnabled: false,
+            safeFnEnabled: false,
+            inputString: "Alice",
+            parsedBytes: [], // Array of byte objects { value: number, char: string }
+            stepIndex: 0,
+            isSimulating: false,
+            timer: null,
+            speed: 400,
+            
+            // Fixed simulated addresses
+            baseAddress: 0x7fffffffe420,
+            secretFuncAddr: 0x004011b6,
+            mainReturnAddr: 0x00401020,
+            canaryValue: [0xde, 0xad, 0xbe, 0xef], // 4 bytes
+            sfpValue: [0x10, 0xe4, 0xff, 0x7f], // 4 bytes SFP
+            
+            // Execution Status
+            executionResult: 'READY', // READY, NORMAL, OVERWRITE_VAR, HIJACK, CANARY_TRIGGER, SAFE_TRUNC
+            isAdminValue: 0
+        };
+
+        // Parse string inputs supporting ASCII and \xHH hex byte sequences
+        function parseInputPayload(str) {
+            const bytes = [];
+            let i = 0;
+            while (i < str.length) {
+                if (str[i] === '\\' && str[i + 1] === 'x' && i + 3 < str.length) {
+                    const hexStr = str.substring(i + 2, i + 4);
+                    const byteVal = parseInt(hexStr, 16);
+                    if (!isNaN(byteVal)) {
+                        bytes.push({
+                            value: byteVal,
+                            char: byteVal >= 32 && byteVal <= 126 ? String.fromCharCode(byteVal) : '.'
+                        });
+                        i += 4;
+                        continue;
+                    }
+                }
+                const code = str.charCodeAt(i);
+                bytes.push({
+                    value: code,
+                    char: str[i]
+                });
+                i++;
+            }
+            return bytes;
+        }
+
+        // Generate Memory Layout structure based on current state settings
+        function buildMemoryLayout() {
+            const layout = [];
+            let currentAddr = state.baseAddress;
+
+            // 1. Local Buffer array (Lowest Memory Addresses)
+            for (let i = 0; i < state.bufferSize; i++) {
+                layout.push({
+                    address: currentAddr + i,
+                    offset: `RBP - ${16 + state.bufferSize - i}`,
+                    region: 'BUFFER',
+                    label: `buffer[${i}]`,
+                    defaultValue: 0x00,
+                    currentValue: 0x00,
+                    charVal: '\\0',
+                    status: 'NORMAL',
+                    description: `Local array buffer byte index ${i}. Allocated at lowest stack address.`
+                });
+            }
+
+            // 2. Neighboring Variable: isAdmin (4 Bytes Integer)
+            const varAddr = currentAddr + state.bufferSize;
+            for (let i = 0; i < 4; i++) {
+                layout.push({
+                    address: varAddr + i,
+                    offset: `RBP - ${12 - i}`,
+                    region: 'VARIABLE',
+                    label: `isAdmin [byte ${i}]`,
+                    defaultValue: 0x00,
+                    currentValue: 0x00,
+                    charVal: '.',
+                    status: 'NORMAL',
+                    description: `Security flag variable (isAdmin). If modified to non-zero, privilege escalation occurs.`
+                });
+            }
+
+            // 3. Stack Canary Protection (4 Bytes, if enabled)
+            if (state.canaryEnabled) {
+                const canaryAddr = varAddr + 4;
+                for (let i = 0; i < 4; i++) {
+                    layout.push({
+                        address: canaryAddr + i,
+                        offset: `RBP - ${8 - i}`,
+                        region: 'CANARY',
+                        label: `Canary [byte ${i}]`,
+                        defaultValue: state.canaryValue[i],
+                        currentValue: state.canaryValue[i],
+                        charVal: '.',
+                        status: 'NORMAL',
+                        description: `Compiler stack canary guard byte. Function epilogue verifies this value before returning.`
+                    });
+                }
+            }
+
+            // 4. Saved Frame Pointer SFP (4 Bytes)
+            const canaryOffset = state.canaryEnabled ? 4 : 0;
+            const sfpAddr = varAddr + 4 + canaryOffset;
+            for (let i = 0; i < 4; i++) {
+                layout.push({
+                    address: sfpAddr + i,
+                    offset: `RBP + ${i}`,
+                    region: 'SFP',
+                    label: `SFP [byte ${i}]`,
+                    defaultValue: state.sfpValue[i],
+                    currentValue: state.sfpValue[i],
+                    charVal: '.',
+                    status: 'NORMAL',
+                    description: `Saved Frame Pointer (RBP of caller main frame).`
+                });
+            }
+
+            // 5. Return Address RET (4 Bytes) - Highest Memory
+            const retAddr = sfpAddr + 4;
+            const mainBytes = [
+                state.mainReturnAddr & 0xff,
+                (state.mainReturnAddr >> 8) & 0xff,
+                (state.mainReturnAddr >> 16) & 0xff,
+                (state.mainReturnAddr >> 24) & 0xff
+            ];
+
+            for (let i = 0; i < 4; i++) {
+                layout.push({
+                    address: retAddr + i,
+                    offset: `RBP + ${4 + i}`,
+                    region: 'RET',
+                    label: `RET [byte ${i}]`,
+                    defaultValue: mainBytes[i],
+                    currentValue: mainBytes[i],
+                    charVal: '.',
+                    status: 'NORMAL',
+                    description: `Saved Return Instruction Pointer (RIP). Tells CPU where to return execution when function finishes.`
+                });
+            }
+
+            return layout;
+        }
+
+        let memoryStack = buildMemoryLayout();
+
+        // Render C source code dynamically based on active settings
+        function renderCSourceCode(activeLineNum = -1) {
+            const body = document.getElementById('code-lines-body');
+            const safeFn = state.safeFnEnabled;
+            const canary = state.canaryEnabled;
+
+            document.getElementById('compiler-badge').textContent = canary 
+                ? 'gcc -fstack-protector' 
+                : 'gcc -fno-stack-protector';
+
+            const lines = [
+                { num: 1, code: `<span class="text-purple-400">void</span> <span class="text-amber-300">secret_admin_function</span>() {` },
+                { num: 2, code: `    <span class="text-slate-400">// Hidden admin function target</span>` },
+                { num: 3, code: `    printf(<span class="text-emerald-300">"SUCCESS: Admin Privileges Granted!\\n"</span>);` },
+                { num: 4, code: `}` },
+                { num: 5, code: `` },
+                { num: 6, code: `<span class="text-purple-400">void</span> <span class="text-blue-300">vulnerable_function</span>(<span class="text-purple-400">char</span> *input) {` },
+                { num: 7, code: `    <span class="text-purple-400">char</span> buffer[<span class="text-cyan-400 font-bold">${state.bufferSize}</span>];` },
+                { num: 8, code: `    <span class="text-purple-400">int</span> isAdmin = <span class="text-cyan-400">0</span>;` },
+                { num: 9, code: canary ? `    <span class="text-purple-400">// Stack Canary inserted by compiler (__stack_chk_guard)</span>` : `    <span class="text-slate-500">// Vulnerable unbounded string copy</span>` },
+                { num: 10, code: safeFn 
+                    ? `    <span class="text-cyan-300 font-bold">strncpy</span>(buffer, input, <span class="text-purple-400">sizeof</span>(buffer) - <span class="text-cyan-400">1</span>);` 
+                    : `    <span class="text-rose-400 font-bold">strcpy</span>(buffer, input); <span class="text-rose-500">// &lt;-- OVERFLOW VULNERABILITY!</span>` },
+                { num: 11, code: `    <span class="text-purple-400">if</span> (isAdmin != <span class="text-cyan-400">0</span>) {` },
+                { num: 12, code: `        printf(<span class="text-emerald-300">"PRIVILEGE ESCALATED!\\n"</span>);` },
+                { num: 13, code: `    }` },
+                { num: 14, code: `}` }
+            ];
+
+            body.innerHTML = lines.map(line => {
+                const isActive = line.num === activeLineNum;
+                return `
+                    <tr class="${isActive ? 'bg-cyan-950/80 border-l-2 border-cyan-400' : 'hover:bg-slate-900/50'} transition">
+                        <td class="pr-3 text-right text-slate-600 select-none w-6 text-[10px]">${line.num}</td>
+                        <td class="text-slate-300 whitespace-pre">${line.code}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Render Memory Stack Table (Top = High Addr RET, Bottom = Low Addr Buffer)
+        function renderMemoryTable(activeByteIndex = -1) {
+            const tbody = document.getElementById('memory-table-body');
+            
+            // Reverse so High Memory is at top of table
+            const reversedStack = [...memoryStack].reverse();
+
+            tbody.innerHTML = reversedStack.map(slot => {
+                const hexAddress = '0x' + slot.address.toString(16);
+                const hexVal = '0x' + slot.currentValue.toString(16).padStart(2, '0').toUpperCase();
+                const asciiDisplay = slot.currentValue >= 32 && slot.currentValue <= 126 
+                    ? String.fromCharCode(slot.currentValue) 
+                    : (slot.currentValue === 0 ? '\\0' : '.');
+
+                // Region Styling
+                let regionClass = '';
+                let badgeColor = '';
+                if (slot.region === 'BUFFER') {
+                    regionClass = 'bg-blue-950/20 text-blue-300';
+                    badgeColor = 'text-blue-400';
+                } else if (slot.region === 'VARIABLE') {
+                    regionClass = 'bg-amber-950/20 text-amber-300';
+                    badgeColor = 'text-amber-400';
+                } else if (slot.region === 'CANARY') {
+                    regionClass = 'bg-purple-950/20 text-purple-300';
+                    badgeColor = 'text-purple-400';
+                } else if (slot.region === 'SFP') {
+                    regionClass = 'bg-indigo-950/20 text-indigo-300';
+                    badgeColor = 'text-indigo-400';
+                } else if (slot.region === 'RET') {
+                    regionClass = 'bg-rose-950/20 text-rose-300';
+                    badgeColor = 'text-rose-400';
+                }
+
+                // Check corruption / overwrite status
+                let isCorrupted = slot.status === 'CORRUPTED';
+                let isOverwritten = slot.status === 'OVERWRITTEN';
+                let isActive = slot.address === (state.baseAddress + activeByteIndex);
+
+                let statusBadge = `<span class="text-[10px] font-mono text-slate-500">Normal</span>`;
+                if (isCorrupted) {
+                    statusBadge = `<span class="px-1.5 py-0.5 rounded bg-rose-900 text-rose-200 font-bold text-[10px] border border-rose-600 animate-pulse">CORRUPTED</span>`;
+                } else if (isOverwritten) {
+                    statusBadge = `<span class="px-1.5 py-0.5 rounded bg-amber-900 text-amber-200 font-bold text-[10px] border border-amber-600">OVERWRITTEN</span>`;
+                }
+
+                return `
+                    <tr class="memory-row cursor-pointer transition border-b border-slate-800/60 ${regionClass} ${isCorrupted ? 'corrupted-glow' : ''} ${isActive ? 'active-write-row bg-cyan-900/40' : 'hover:bg-slate-800/50'}" data-addr="${slot.address}">
+                        <td class="p-2 font-bold ${badgeColor}">${hexAddress}</td>
+                        <td class="p-2 text-slate-400 text-[11px]">${slot.offset}</td>
+                        <td class="p-2 font-semibold text-slate-200">${slot.label}</td>
+                        <td class="p-2 text-center font-bold ${isCorrupted || isOverwritten ? 'text-rose-300' : 'text-cyan-300'}">${hexVal}</td>
+                        <td class="p-2 text-center text-slate-200 font-bold bg-slate-900/60 rounded">${asciiDisplay}</td>
+                        <td class="p-2 text-right">${statusBadge}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Rebind click events for memory inspection
+            document.querySelectorAll('.memory-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    const addr = parseInt(row.getAttribute('data-addr'), 10);
+                    openInspectorModal(addr);
+                });
+            });
+        }
+
+        // Main simulation step function
+        function stepSimulation() {
+            if (state.stepIndex >= state.parsedBytes.length || state.executionResult === 'CANARY_TRIGGER' || state.executionResult === 'SAFE_TRUNC') {
+                finalizeExecution();
+                return;
+            }
+
+            // Safe strncpy bounds check
+            if (state.safeFnEnabled && state.stepIndex >= (state.bufferSize - 1)) {
+                // Truncate input safely
+                state.executionResult = 'SAFE_TRUNC';
+                // Add null byte at last buffer index
+                const lastBufferSlot = memoryStack.find(s => s.label === `buffer[${state.bufferSize - 1}]`);
+                if (lastBufferSlot) {
+                    lastBufferSlot.currentValue = 0x00;
+                    lastBufferSlot.charVal = '\\0';
+                }
+                logConsole(`[strncpy Protection] Payload truncated at byte ${state.bufferSize - 1}. Null byte placed safely.`);
+                finalizeExecution();
+                return;
+            }
+
+            const currentByte = state.parsedBytes[state.stepIndex];
+            const targetAddr = state.baseAddress + state.stepIndex;
+            const slot = memoryStack.find(s => s.address === targetAddr);
+
+            renderCSourceCode(10); // Highlight strcpy line
+
+            if (slot) {
+                slot.currentValue = currentByte.value;
+                slot.charVal = currentByte.char;
+
+                // Check if byte is spilling past buffer
+                if (slot.region !== 'BUFFER') {
+                    if (slot.region === 'VARIABLE') {
+                        slot.status = 'OVERWRITTEN';
+                        logConsole(`[OVERFLOW] Byte ${state.stepIndex} ('${currentByte.char}' / 0x${currentByte.value.toString(16)}) overwrote variable ${slot.label}!`);
+                    } else if (slot.region === 'CANARY') {
+                        slot.status = 'CORRUPTED';
+                        logConsole(`[WARNING] Byte ${state.stepIndex} corrupted Stack Canary byte!`);
+                    } else if (slot.region === 'SFP' || slot.region === 'RET') {
+                        slot.status = 'CORRUPTED';
+                        logConsole(`[CRITICAL] Byte ${state.stepIndex} overwritten control pointer ${slot.label}!`);
+                    }
+                } else {
+                    logConsole(`[Copy] buffer[${state.stepIndex}] = '${currentByte.char}' (0x${currentByte.value.toString(16).padStart(2,'0')})`);
+                }
+            } else {
+                logConsole(`[OVERFLOW] Byte ${state.stepIndex} spilt beyond tracked stack bounds!`);
+            }
+
+            // Update UI
+            renderMemoryTable(state.stepIndex);
+            updateRegisterDisplay();
+
+            state.stepIndex++;
+        }
+
+        // Finalize execution after payload writing completes
+        function finalizeExecution() {
+            stopSimulation();
+
+            // 1. Check Stack Canary Protection
+            if (state.canaryEnabled) {
+                const canarySlots = memoryStack.filter(s => s.region === 'CANARY');
+                const isCanaryCorrupted = canarySlots.some(s => s.status === 'CORRUPTED' || s.currentValue !== s.defaultValue);
+                
+                if (isCanaryCorrupted) {
+                    state.executionResult = 'CANARY_TRIGGER';
+                    renderCSourceCode(9);
+                    updateAlertBanner(
+                        'CANARY CORRUPTION DETECTED!',
+                        'Stack Canary was altered! Execution safely aborted via __stack_chk_fail(). Attack defeated.',
+                        'rose'
+                    );
+                    logConsole(`*** stack smashing detected ***: terminated. Program called __stack_chk_fail().`, true);
+                    document.getElementById('reg-rip').textContent = '0x00401200 (__stack_chk_fail)';
+                    return;
+                }
+            }
+
+            // 2. Read RET address value (4 bytes little-endian)
+            const retSlots = memoryStack.filter(s => s.region === 'RET');
+            const retVal = (retSlots[0].currentValue) |
+                           (retSlots[1].currentValue << 8) |
+                           (retSlots[2].currentValue << 16) |
+                           (retSlots[3].currentValue << 24) >>> 0;
+
+            const hexRet = '0x' + retVal.toString(16).padStart(8, '0');
+            document.getElementById('reg-rip').textContent = hexRet;
+
+            // 3. Read isAdmin value (4 bytes)
+            const varSlots = memoryStack.filter(s => s.region === 'VARIABLE');
+            state.isAdminValue = (varSlots[0].currentValue) |
+                                 (varSlots[1].currentValue << 8) |
+                                 (varSlots[2].currentValue << 16) |
+                                 (varSlots[3].currentValue << 24) >>> 0;
+
+            // 4. Determine execution outcome
+            if (retVal === state.secretFuncAddr) {
+                // Control Flow Hijacked!
+                state.executionResult = 'HIJACK';
+                renderCSourceCode(3);
+                updateAlertBanner(
+                    '🚨 CONTROL FLOW HIJACKED!',
+                    `Return address overwritten with 0x004011B6! Instruction pointer (RIP) jumped to secret_admin_function().`,
+                    'rose'
+                );
+                logConsole(`[HIJACK SUCCESS] RET pointer hijacked to secret_admin_function() (0x004011B6)!`);
+                logConsole(`SUCCESS: Secret Admin Shell Executed!`);
+            } else if (retVal !== state.mainReturnAddr) {
+                // Segmentation Fault
+                state.executionResult = 'CRASH';
+                renderCSourceCode(14);
+                updateAlertBanner(
+                    '💥 SEGMENTATION FAULT (SIGSEGV)',
+                    `Return address corrupted to invalid address ${hexRet}. CPU attempted to jump to unmapped memory!`,
+                    'rose'
+                );
+                logConsole(`[CRASH] Segmentation Fault: Program crashed attempting to execute return address ${hexRet}.`, true);
+            } else if (state.isAdminValue !== 0) {
+                // Local Variable Overwritten (Privilege Escalation)
+                state.executionResult = 'OVERWRITE_VAR';
+                renderCSourceCode(12);
+                updateAlertBanner(
+                    '⚠️ LOCAL VARIABLE OVERWRITTEN!',
+                    `isAdmin flag changed from 0 to ${state.isAdminValue}! Unauthorized privilege escalation achieved!`,
+                    'amber'
+                );
+                logConsole(`[PRIVILEGE ESCALATION] isAdmin flag corrupted! Value = ${state.isAdminValue}. Admin Granted!`);
+            } else if (state.executionResult === 'SAFE_TRUNC') {
+                renderCSourceCode(10);
+                updateAlertBanner(
+                    '🛡️ SAFE FUNCTION MITIGATION ACTIVE',
+                    `strncpy() truncated input payload to fit within ${state.bufferSize - 1} bytes. Memory stack preserved!`,
+                    'emerald'
+                );
+            } else {
+                // Normal Safe Return
+                state.executionResult = 'NORMAL';
+                renderCSourceCode(14);
+                updateAlertBanner(
+                    '✅ NORMAL SAFE EXECUTION',
+                    `Payload fitted inside buffer boundaries. Program returned safely to main() without memory corruption.`,
+                    'emerald'
+                );
+                logConsole(`[SAFE] Function executed normally. Return address verified: 0x00401020.`);
+            }
+        }
+
+        function updateRegisterDisplay() {
+            const currentRsp = state.baseAddress + Math.min(state.stepIndex, memoryStack.length - 1);
+            document.getElementById('reg-rsp').textContent = '0x' + currentRsp.toString(16);
+            document.getElementById('reg-rbp').textContent = '0x' + (state.baseAddress + state.bufferSize + 8).toString(16);
+        }
+
+        function updateAlertBanner(title, desc, type) {
+            const banner = document.getElementById('status-alert');
+            const icon = document.getElementById('status-alert-icon');
+            document.getElementById('status-alert-title').textContent = title;
+            document.getElementById('status-alert-desc').textContent = desc;
+
+            banner.className = `p-3 rounded-xl border text-xs flex items-start gap-2 transition `;
+            if (type === 'rose') {
+                banner.classList.add('bg-rose-950/80', 'border-rose-700', 'text-rose-200');
+                icon.setAttribute('data-lucide', 'skull');
+                icon.className = 'w-4 h-4 text-rose-400 mt-0.5 shrink-0';
+            } else if (type === 'amber') {
+                banner.classList.add('bg-amber-950/80', 'border-amber-700', 'text-amber-200');
+                icon.setAttribute('data-lucide', 'alert-triangle');
+                icon.className = 'w-4 h-4 text-amber-400 mt-0.5 shrink-0';
+            } else if (type === 'emerald') {
+                banner.classList.add('bg-emerald-950/80', 'border-emerald-700', 'text-emerald-200');
+                icon.setAttribute('data-lucide', 'check-circle-2');
+                icon.className = 'w-4 h-4 text-emerald-400 mt-0.5 shrink-0';
+            } else {
+                banner.classList.add('bg-slate-800', 'border-slate-700', 'text-slate-200');
+                icon.setAttribute('data-lucide', 'info');
+                icon.className = 'w-4 h-4 text-cyan-400 mt-0.5 shrink-0';
+            }
+            lucide.createIcons();
+        }
+
+        function logConsole(msg, isError = false) {
+            const consoleBox = document.getElementById('console-output');
+            const line = document.createElement('div');
+            line.className = isError ? 'text-rose-400 font-bold' : 'text-emerald-300';
+            line.textContent = msg;
+            consoleBox.appendChild(line);
+            consoleBox.scrollTop = consoleBox.scrollHeight;
+        }
+
+        function startSimulation() {
+            resetSimulationState();
+            state.isSimulating = true;
+            document.getElementById('btn-run-text').textContent = 'Running...';
+            
+            state.timer = setInterval(() => {
+                if (state.stepIndex < state.parsedBytes.length) {
+                    stepSimulation();
+                } else {
+                    finalizeExecution();
+                }
+            }, state.speed);
+        }
+
+        function stopSimulation() {
+            state.isSimulating = false;
+            if (state.timer) {
+                clearInterval(state.timer);
+                state.timer = null;
+            }
+            document.getElementById('btn-run-text').textContent = 'Run Payload';
+        }
+
+        function resetSimulationState() {
+            stopSimulation();
+            state.stepIndex = 0;
+            state.executionResult = 'READY';
+            memoryStack = buildMemoryLayout();
+            renderMemoryTable();
+            renderCSourceCode();
+            updateRegisterDisplay();
+            
+            // Clear legend canary state
+            const canaryLegend = document.getElementById('legend-canary');
+            if (state.canaryEnabled) {
+                canaryLegend.classList.remove('hidden');
+            } else {
+                canaryLegend.classList.add('hidden');
+            }
+
+            updateAlertBanner('System Ready', 'Press Run or Step to start memory stack simulation.', 'info');
+        }
+
+        function loadPreset(presetNum) {
+            resetSimulationState();
+            
+            const canaryToggle = document.getElementById('toggle-canary');
+            const safeFnToggle = document.getElementById('toggle-safe-fn');
+            const slider = document.getElementById('buffer-size-slider');
+            const inputEl = document.getElementById('input-string');
+
+            if (presetNum === '1') {
+                // Normal Safe Input
+                slider.value = 8;
+                state.bufferSize = 8;
+                canaryToggle.checked = false;
+                safeFnToggle.checked = false;
+                inputEl.value = "Alice";
+            } else if (presetNum === '2') {
+                // Overwrite Variable (isAdmin)
+                slider.value = 8;
+                state.bufferSize = 8;
+                canaryToggle.checked = false;
+                safeFnToggle.checked = false;
+                inputEl.value = "AAAAAAAA\\x01";
+            } else if (presetNum === '3') {
+                // Control Flow Hijack
+                slider.value = 8;
+                state.bufferSize = 8;
+                canaryToggle.checked = false;
+                safeFnToggle.checked = false;
+                // 8 bytes buffer + 4 bytes isAdmin + 4 bytes SFP + 4 bytes RET (\xb6\x11\x40\x00)
+                inputEl.value = "AAAAAAAA\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\x00\\xb6\\x11\\x40\\x00";
+            } else if (presetNum === '4') {
+                // Stack Canary Defense
+                slider.value = 8;
+                state.bufferSize = 8;
+                canaryToggle.checked = true;
+                safeFnToggle.checked = false;
+                inputEl.value = "AAAAAAAA\\x00\\x00\\x00\\x00\\x41\\x41\\x41\\x41\\x00\\x00\\x00\\x00\\xb6\\x11\\x40\\x00";
+            } else if (presetNum === '5') {
+                // Safe strncpy Function
+                slider.value = 8;
+                state.bufferSize = 8;
+                canaryToggle.checked = false;
+                safeFnToggle.checked = true;
+                inputEl.value = "AAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+            }
+
+            // Sync state
+            state.canaryEnabled = canaryToggle.checked;
+            state.safeFnEnabled = safeFnToggle.checked;
+            state.inputString = inputEl.value;
+            state.parsedBytes = parseInputPayload(state.inputString);
+            
+            document.getElementById('buffer-size-val').textContent = `${state.bufferSize} Bytes`;
+            document.getElementById('input-len-display').textContent = state.parsedBytes.length;
+
+            resetSimulationState();
+            logConsole(`[Preset ${presetNum} Loaded] Input length: ${state.parsedBytes.length} bytes.`);
+        }
+
+        function openInspectorModal(address) {
+            const slot = memoryStack.find(s => s.address === address);
+            if (!slot) return;
+
+            document.getElementById('modal-address').textContent = '0x' + slot.address.toString(16);
+            document.getElementById('modal-offset').textContent = slot.offset;
+            document.getElementById('modal-region').textContent = slot.label;
+            
+            const hexVal = '0x' + slot.currentValue.toString(16).padStart(2, '0').toUpperCase();
+            const charDisplay = slot.currentValue >= 32 && slot.currentValue <= 126 
+                ? `'${String.fromCharCode(slot.currentValue)}'` 
+                : (slot.currentValue === 0 ? "'\\0' (NULL)" : "Non-printable");
+            
+            document.getElementById('modal-value').textContent = `${hexVal} (${charDisplay})`;
+            document.getElementById('modal-description').textContent = slot.description;
+
+            document.getElementById('inspector-modal').classList.remove('hidden');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+
+            const inputEl = document.getElementById('input-string');
+            const slider = document.getElementById('buffer-size-slider');
+            const speedSlider = document.getElementById('speed-slider');
+            const canaryToggle = document.getElementById('toggle-canary');
+            const safeFnToggle = document.getElementById('toggle-safe-fn');
+
+            // Input payload change listener
+            inputEl.addEventListener('input', (e) => {
+                state.inputString = e.target.value;
+                state.parsedBytes = parseInputPayload(state.inputString);
+                document.getElementById('input-len-display').textContent = state.parsedBytes.length;
+                resetSimulationState();
+            });
+
+            // Buffer slider listener
+            slider.addEventListener('input', (e) => {
+                state.bufferSize = parseInt(e.target.value, 10);
+                document.getElementById('buffer-size-val').textContent = `${state.bufferSize} Bytes`;
+                resetSimulationState();
+            });
+
+            // Speed slider
+            speedSlider.addEventListener('input', (e) => {
+                state.speed = 1100 - parseInt(e.target.value, 10); // Inverse speed
+            });
+
+            // Protection Toggles
+            canaryToggle.addEventListener('change', (e) => {
+                state.canaryEnabled = e.target.checked;
+                resetSimulationState();
+            });
+
+            safeFnToggle.addEventListener('change', (e) => {
+                state.safeFnEnabled = e.target.checked;
+                resetSimulationState();
+            });
+
+            // Run & Step Buttons
+            document.getElementById('btn-run').addEventListener('click', () => {
+                if (state.isSimulating) {
+                    stopSimulation();
+                } else {
+                    startSimulation();
+                }
+            });
+
+            document.getElementById('btn-step').addEventListener('click', () => {
+                if (state.isSimulating) stopSimulation();
+                stepSimulation();
+            });
+
+            document.getElementById('btn-reset-all').addEventListener('click', () => {
+                loadPreset('1');
+            });
+
+            // Quick Injection Buttons
+            document.querySelectorAll('.btn-quick-inject').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const injectVal = btn.getAttribute('data-val');
+                    inputEl.value += injectVal;
+                    inputEl.dispatchEvent(new Event('input'));
+                });
+            });
+
+            document.getElementById('btn-clear-input').addEventListener('click', () => {
+                inputEl.value = '';
+                inputEl.dispatchEvent(new Event('input'));
+            });
+
+            document.getElementById('btn-clear-console').addEventListener('click', () => {
+                document.getElementById('console-output').innerHTML = '<div>$ ./vulnerable_program</div>';
+            });
+
+            // Presets buttons
+            document.querySelectorAll('.preset-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const presetId = btn.getAttribute('data-preset');
+                    loadPreset(presetId);
+                });
+            });
+
+            // Modals controls
+            document.getElementById('btn-close-modal').addEventListener('click', () => {
+                document.getElementById('inspector-modal').classList.add('hidden');
+            });
+            document.getElementById('btn-modal-ok').addEventListener('click', () => {
+                document.getElementById('inspector-modal').classList.add('hidden');
+            });
+
+            document.getElementById('btn-guide-modal').addEventListener('click', () => {
+                document.getElementById('guide-modal').classList.remove('hidden');
+            });
+            document.getElementById('btn-close-guide').addEventListener('click', () => {
+                document.getElementById('guide-modal').classList.add('hidden');
+            });
+            document.getElementById('btn-guide-ok').addEventListener('click', () => {
+                document.getElementById('guide-modal').classList.add('hidden');
+            });
+
+            // Initialize default view
+            loadPreset('1');
+        });
+    </script>
+</body>
+</html>
